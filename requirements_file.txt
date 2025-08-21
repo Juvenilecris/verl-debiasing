@@ -244,7 +244,7 @@ watchfiles==1.1.0
 wcwidth==0.2.13
 websockets==15.0.1
 wheel==0.45.1
-wrapt==1.17.2
+wrapt==1.17.3
 xformers==0.0.29.post2
 xgrammar==0.1.21
 xxhash==3.5.0
