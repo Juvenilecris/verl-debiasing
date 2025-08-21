@@ -142,7 +142,7 @@ orjson==3.11.1
 outlines==0.1.11
 outlines-core==0.1.26
 packaging==25.0
-pandas==2.3.1
+pandas==2.3.2
 parso==0.8.4
 partial-json-parser==0.2.1.1.post6
 peft==0.17.0
