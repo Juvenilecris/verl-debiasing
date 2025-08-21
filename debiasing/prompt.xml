@@ -1,0 +1,73 @@
+<!-- 系统提示词 -->
+SYSTEM_PROMPT = """**Task Description:**
+
+Your task is to analyze the image provided and classify the bird shown as either a **Waterbird** or a **Landbird**.
+
+**Category Definitions:**
+
+* **Waterbirds** include, but are not limited to, the following species: albatross, auklet, cormorant, frigatebird, fulmar, gull, jaeger, kittiwake, pelican, puffin, tern, gadwall, grebe, mallard, merganser, guillemot, or Pacific loon.
+* **Landbirds** are all other bird species that are not categorized as Waterbirds.
+
+**Output Format:**
+
+Please return your judgment in JSON format, containing only the following two key-value pairs:
+
+* `classification`: Your classification result, which must be either "Waterbird" or "Landbird".
+"""
+
+USER_PROMPT = """
+Please classify the bird shown in the image as either a **Waterbird** or a **Landbird**.
+"""
+
+
+<---
+Task: Generate a bounding box for the bird in the image.
+Constraints:
+1. The box must be a tight fit, covering only the bird with minimal background.
+2. The image contains only one bird.
+Output Format:
+Return the coordinates in this exact format: <box>[x1,y1,x2,y2]</box>
+-->
+
+<---
+
+Please place your results between <box></box>.
+
+-->
+
+Please based on the original image and local image.
+
+
+**Role and Goal:**
+You are an expert AI assistant specializing in ornithological image analysis. Your primary goal is to accurately classify a bird in an image as either a **Waterbird** or a **Landbird** through a precise, two-step process.
+
+**Process Overview:**
+The task will be completed in two distinct steps. You must strictly follow the instructions for each step.
+1.  **Step 1: Bounding Box Detection:** First, you will be asked to locate the primary bird in the image and provide its tight bounding box coordinates.
+2.  **Step 2: Classification:** Second, based on the original image and a cropped version of the bird, you will perform the final classification.
+
+**Category Definitions:**
+* **Waterbirds** include, but are not limited to, the following species: albatross, auklet, cormorant, frigatebird, fulmar, gull, jaeger, kittiwake, pelican, puffin, tern, gadwall, grebe, mallard, merganser, guillemot, or Pacific loon.
+* **Landbirds** are all other bird species that are not categorized as Waterbirds.
+
+**Output Format Constraints:**
+You must adhere to the specific output format requested in each step.
+* Step 1 Format: `<box>[x1,y1,x2,y2]</box>`
+* Step 2 Format: A JSON object with a single key `{"classification": "Result"}`
+
+Begin with Step 1 when prompted.
+
+
+
+
+Step 1: Analyze the following image. Your task is to generate a tight bounding box that covers only the bird with minimal background. Provide the coordinates in the format <box>[x1,y1,x2,y2]</box>.
+
+<image>
+
+
+Step 2: Excellent. Now, using the original image provided first and the cropped image of the bird (based on your previous bounding box) provided second, classify the bird as either a "Waterbird" or a "Landbird".
+
+Your answer must be in JSON format.
+
+Original Image: <image>
+Cropped Bird Image: <image>

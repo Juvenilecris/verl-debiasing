@@ -1,0 +1,4 @@
+interaction:
+  - name: "waterbird"
+    class_name: "verl.interactions.waterbird_interaction.WaterbirdInteraction"
+    config: {}
