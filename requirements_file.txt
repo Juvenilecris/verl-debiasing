@@ -28,7 +28,7 @@ colorful==0.5.7
 compressed-tensors==0.9.3
 cuda-bindings==12.9.0
 cuda-python==12.9.0
-cupy-cuda12x==13.5.1
+cupy-cuda12x==13.6.0
 datasets==4.0.0
 decorator==5.2.1
 decord==0.6.0
