@@ -378,8 +378,10 @@ class DataParallelPPOActor(BasePPOActor):
             select_keys.append("ref_log_prob")
 
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
-        non_tensor_select_keys = ["multi_modal_inputs"] if has_multi_modal_inputs else []
-
+        extra_info = data.non_tensor_batch["extra_info"]
+        
+        non_tensor_select_keys = ["multi_modal_inputs","extra_info"] if has_multi_modal_inputs else []
+        
         data = data.select(batch_keys=select_keys, non_tensor_batch_keys=non_tensor_select_keys)
 
         # Split to make minibatch iterator for updating the actor
@@ -407,6 +409,17 @@ class DataParallelPPOActor(BasePPOActor):
                     response_mask = model_inputs["response_mask"]
                     old_log_prob = model_inputs["old_log_probs"]
                     advantages = model_inputs["advantages"]
+             
+                    group_weights=[[1,2.14],[7.49,3.40]]
+                    
+                    if self.config.weight_by_group :
+                        print("len():",len(model_inputs["extra_info"]))
+                        # print("model_inputs_y:",model_inputs["extra_info"]["y"])
+                        # print("model_inputs_place:",model_inputs["extra_info"]["place"])
+                        # weights = group_weights[model_inputs["extra_info"]["y"]][model_inputs["extra_info"]["place"]]
+                        # weights = -weights if model_inputs["extra_info"]["is_negative"] else weights
+                        # print("weight:",weights)
+                    
 
                     entropy_coeff = self.config.entropy_coeff
                     loss_agg_mode = self.config.loss_agg_mode
@@ -463,6 +476,10 @@ class DataParallelPPOActor(BasePPOActor):
                         loss = policy_loss * loss_scale_factor
                     else:
                         loss = policy_loss * loss_scale_factor
+                    if self.config.weight_by_group:
+                        # loss = loss * weights
+                        print(loss)
+                        
                     loss.backward()
 
                     micro_batch_metrics.update(

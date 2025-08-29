@@ -186,15 +186,49 @@ def _extract_logprob_from_output(output):
     """
 
     def _map_each_response(resp):
-        input_token_logprobs = resp["meta_info"]["input_token_logprobs"]
+        output_token_logprobs = resp["meta_info"]["output_token_logprobs"]
         log_probs, output_token_ids = zip(
-            *[(log_prob, token_ids) for log_prob, token_ids, _ in input_token_logprobs[1:]], strict=False
+            *[(log_prob, token_ids) for log_prob, token_ids, _ in output_token_logprobs], strict=False
         )
         return torch.tensor(output_token_ids), torch.tensor(log_probs)
 
     output_token_ids, log_probs = _map_each_response(output)
     return output_token_ids, log_probs
 
+#自定义
+def _extract_tracked_token_logprobs(output, tracked_ids):
+    """
+    从 Verl/SGLang 的原始输出中，精确提取您特别追踪的 token ID 的 log probs。
+
+    Args:
+        output (List[dict]): aysnc_generate 直接返回的原始输出。
+        tracked_ids (List[int]): 您在请求中追踪的 token ID 列表, e.g., [28253, 41957]。
+
+    Returns:
+        List[List[Dict[int, float]]]: 
+        一个列表，每个元素对应批次中的一个样本。
+        每个样本是一个列表，代表生成序列的每个位置（时间步）。
+        每个位置是一个字典，映射 {token_id: log_prob}。
+    """
+    tracked_tokens_logprobs=[]
+    tracked_logprobs_data = output.get("meta_info", {}).get("output_token_ids_logprobs")
+    # 1. 遍历批次中的每个响应 (response)
+    for tracked_id in tracked_ids:
+        logprobs_by_tracked_id=[]
+        # 3. 遍历生成序列的每一步
+        for step_data in tracked_logprobs_data:
+            # step_data 是一个元组列表，e.g., [(-5.1, 28253, 'text'), (-2.3, 41957, 'text')]
+            if step_data:
+                for log_prob, token_id, _ in step_data:
+                    try:
+                        if token_id == tracked_id:
+                            logprobs_by_tracked_id.append(log_prob)
+                    except ValueError:
+                        # 如果 token_id 不在我们的追踪列表中，忽略它
+                        continue
+        
+        tracked_tokens_logprobs.append(torch.tensor(logprobs_by_tracked_id, dtype=torch.float32))
+    return tracked_tokens_logprobs
 
 # NOTE(linjunrong): adhoc
 def _post_process_outputs(processing_class, output):
@@ -728,6 +762,7 @@ class SGLangRollout(BaseRollout):
                     return_logprob=True,
                     input_ids=idx_list,
                     image_data=image_list,
+                    token_ids_logprob=[28253, 41957] if self.config.calculate_tokens_log_probs else None,
                 )
             )
         else:
@@ -743,19 +778,16 @@ class SGLangRollout(BaseRollout):
             force_cpu_device=False,
         )
         out = _post_process_outputs(self.processing_class, output)
-
         response = out[0].to(idx.device)
         rollout_log_probs = None
         if self.config.calculate_log_probs:
             rollout_log_probs = out[1].to(idx.device)
-
         if response.shape[1] < self.config.response_length:
             response = pad_sequence_to_length(response, self.config.response_length, self.pad_token_id)
             if self.config.calculate_log_probs:
                 rollout_log_probs = pad_sequence_to_length(
                     rollout_log_probs, self.config.response_length, self.pad_token_id
                 )
-
         seq = torch.cat([idx, response], dim=-1)
 
         response_length = response.size(1)
@@ -808,6 +840,12 @@ class SGLangRollout(BaseRollout):
         _req = deepcopy(req)
         finish_reason_type = None
         output = None
+        if self.config.calculate_log_probs:
+            rollout_log_probs=[]
+            output_token_ids=[]
+            if self.config.calculate_tokens_log_probs:
+                tracked_ids = [28253, 41957]
+                log_probs_token_ids=[[] for _ in range(len(tracked_ids))]
 
         current_turns = 0
         user_turns = 0
@@ -899,6 +937,26 @@ class SGLangRollout(BaseRollout):
 
                 output = await self._handle_engine_call(_req, request_sampling_params, image_data=image_data)
                 content = output["text"]
+                # print("output:",output)
+                if self.config.calculate_log_probs:
+                    rollout_log_probs.append(_extract_logprob_from_output(output)[0])
+                    output_token_ids.append(_extract_logprob_from_output(output)[1])
+                    if current_turns==0:
+                        user2_padding = torch.zeros(98)
+                        user2_tokens=torch.tensor([198, 151644, 872, 198, 9, 14822, 220, 17, 15042, 25, 366, 9217, 29, 28253, 22592, 476,
+        11426, 22592, 522, 9217, 1339, 8304, 220, 17, 25, 36766, 13, 4695, 11, 1667, 279, 4024, 2168, 366, 1805, 29, 3897, 1156, 323, 279, 60143, 2168, 366,
+        1805, 29, 315, 279, 11958, 320, 29939, 389, 697, 3681, 30618, 3745, 8, 3897, 2086, 11, 48129, 279,
+        11958, 438, 2987, 264, 330, 28253, 22592, 1, 476, 264, 330, 41957, 22592, 3263, 39565, 697, 23850, 1102, 304, 279, 3561, 366, 9217, 29, 28253, 22592, 476,
+        11426, 22592, 522, 9217, 14276, 151645, 198, 151644, 77091, 198])
+                        rollout_log_probs.append(user2_padding)      
+                        output_token_ids.append(user2_tokens)              
+                    if self.config.calculate_tokens_log_probs:
+                        log_probs_token_ids_list=_extract_tracked_token_logprobs(output,tracked_ids)
+                        for i in range(len(tracked_ids)):
+                            log_probs_token_ids[i].append(log_probs_token_ids_list[i])
+                            if current_turns==0:
+                                log_probs_token_ids[i].append(user2_padding)
+                            
                 finish_reason_type = FinishReasonTypeEnum.from_str(output["meta_info"]["finish_reason"]["type"])
                 current_turns += 1
                 if finish_reason_type == FinishReasonTypeEnum.LENGTH:
@@ -1007,17 +1065,29 @@ class SGLangRollout(BaseRollout):
         all_rewards = {**tool_reward_scores, **{"user_turn_rewards": user_turn_rewards}}
         _req.finalize(self.processing_class, all_rewards, finish_reason_type)
         if self.config.calculate_log_probs:
-            debug_sampling_params = {**self.sampling_params}
-            debug_sampling_params["max_new_tokens"] = 0
-            output = await self._engine.async_generate(
-                prompt=None,
-                input_ids=_req.input_ids,
-                sampling_params=debug_sampling_params,
-                return_logprob=True,
-                logprob_start_len=0,
-            )
-            # len(input_token_logprobs) = len(input_tokens)-1，because logprob of 1st token is None
-            _req.output_token_ids, _req.rollout_log_probs = _extract_logprob_from_output(output)
+            _req.rollout_log_probs=torch.cat(rollout_log_probs,dim=0)
+            _req.output_token_ids=torch.cat(output_token_ids,dim=0)
+            if self.config.calculate_tokens_log_probs:
+                _req.log_probs_token_ids=[torch.cat(log_probs_token_id,dim=0) for log_probs_token_id in log_probs_token_ids]
+            
+        # if self.config.calculate_log_probs:
+        #     debug_sampling_params = {**self.sampling_params}
+        #     debug_sampling_params["max_new_tokens"] = 0
+        #     output = await self._engine.async_generate(
+        #         prompt=None,
+        #         input_ids=_req.input_ids,
+        #         sampling_params=debug_sampling_params,
+        #         return_logprob=True,
+        #         logprob_start_len=0,
+        #         token_ids_logprob=[28253, 41957] if self.config.calculate_tokens_log_probs else None
+        #     )
+        #     print("len(_req.input_ids):", len(_req.input_ids))
+        #     print("len(_req.response_ids):", len(_req.response_ids))
+        #     # len(input_token_logprobs) = len(input_tokens)-1，because logprob of 1st token is None
+        #     _req.output_token_ids, _req.rollout_log_probs = _extract_logprob_from_output(output[0])
+        #     if self.config.calculate_tokens_log_probs:
+        #         tracked_ids = [28253, 41957]
+        #         _req.log_probs_token_ids=_extract_tracked_token_logprobs(output[0],tracked_ids)[0]
         return _req
 
     async def _handle_engine_call(
@@ -1036,10 +1106,12 @@ class SGLangRollout(BaseRollout):
         kwargs["n"] = 1  # group size is supported in preprocess
 
         output = await self._engine.async_generate(
+            prompt=None,
             input_ids=generation_prompt_ids,
             sampling_params=kwargs,
-            return_logprob=False,
+            return_logprob=True if self.config.calculate_log_probs else False,
             image_data=image_data,
+            token_ids_logprob=[28253, 41957] if self.config.calculate_tokens_log_probs else None,
         )
         return output
 
@@ -1168,6 +1240,9 @@ class SGLangRollout(BaseRollout):
         if self.config.calculate_log_probs:
             output_logprobs = []
             rollout_output_token_ids = []
+            if self.config.calculate_tokens_log_probs:
+                tracked_ids = [28253, 41957]
+                log_probs_token_ids = [[] for _ in tracked_ids]
 
         for req in sorted_output_req_list:
             assert req.state == AsyncRolloutRequestStateEnum.COMPLETED, f"Request {req.request_id} is not completed"
@@ -1210,8 +1285,13 @@ class SGLangRollout(BaseRollout):
             request_ids.append(req.request_id)
             if self.config.calculate_log_probs:
                 # extract output log_probs
-                output_logprobs.append(req.rollout_log_probs[-len(req.response_ids) :])
-                rollout_output_token_ids.append(req.output_token_ids[-len(req.response_ids) :])
+                # output_logprobs.append(req.rollout_log_probs[-len(req.response_ids) :])
+                # rollout_output_token_ids.append(req.output_token_ids[-len(req.response_ids) :])
+                output_logprobs.append(req.rollout_log_probs)
+                rollout_output_token_ids.append(req.output_token_ids)
+                if self.config.calculate_tokens_log_probs:
+                    for idx, _log_probs_token_id in enumerate(req.log_probs_token_ids):
+                        log_probs_token_ids[idx].append(_log_probs_token_id)
 
         prompt_ids = pad_sequence(
             prompt_ids,
@@ -1287,6 +1367,11 @@ class SGLangRollout(BaseRollout):
             rollout_output_token_ids = pad_sequence_to_length(
                 rollout_output_token_ids, pad_token_id=self.pad_token_id, max_seq_len=response_ids.shape[-1]
             ).to(tgt_device)
+            if self.config.calculate_tokens_log_probs:
+                log_probs_token_ids = [pad_sequence(log_probs_token_id, padding_value=0.0, batch_first=True) for log_probs_token_id in log_probs_token_ids]
+                log_probs_token_ids = torch.stack([pad_sequence_to_length(
+                    log_probs_token_id, pad_token_id=0.0, max_seq_len=response_ids.shape[-1]
+                ) for log_probs_token_id in log_probs_token_ids],dim=0).to(tgt_device)
 
         input_ids = torch.cat((prompt_ids, response_ids), dim=-1)
         attention_mask = torch.cat((prompt_attention_mask, response_attention_mask), dim=-1)
@@ -1307,7 +1392,9 @@ class SGLangRollout(BaseRollout):
         if self.config.calculate_log_probs:
             batch["rollout_log_probs"] = output_logprobs
             batch["rollout_output_token_ids"] = rollout_output_token_ids
-
+            if self.config.calculate_tokens_log_probs:
+                batch["log_probs_token_ids"] = log_probs_token_ids.permute(1, 0, 2)
+                
         # free cache engine
         if self._engine is not None and self._tp_rank == 0:
             loop = asyncio.get_event_loop()

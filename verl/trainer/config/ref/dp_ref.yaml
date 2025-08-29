@@ -26,6 +26,7 @@ fsdp_config:
 
   # whether to offload parameters in FSDP
   param_offload: False
+  
 
   # whether to perform reshard after model forward to save memory.
   # only for fsdp2, [True, False, int between 1 and fsdp_size]

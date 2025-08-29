@@ -62,6 +62,8 @@ fsdp_config:
   # Whether to offload model parameters to CPU (trades speed for memory)
   param_offload: false
 
+  model_dtype: float32
+
   # Whether to offload optimizer state to CPU
   optimizer_offload: false
 

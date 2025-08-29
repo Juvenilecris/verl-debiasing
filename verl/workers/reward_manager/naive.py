@@ -80,7 +80,18 @@ class NaiveRewardManager(AbstractRewardManager):
             data_source = data_item.non_tensor_batch[self.reward_fn_key]
             extra_info = data_item.non_tensor_batch.get("extra_info", {})
             num_turns = data_item.non_tensor_batch.get("__num_turns__", None)
+            bbox_rewards = data_item.non_tensor_batch.get("reward_scores", None).get("user_turn_rewards", None)
+            extra_info["bbox_rewards"] = bbox_rewards
             extra_info["num_turns"] = num_turns
+            # print("data_item.batch.keys:", data_item.batch.keys())
+            
+            
+            
+            if "log_probs_token_ids" in data_item.batch.keys():
+                extra_info["valid_response_ids"]=valid_response_ids
+                extra_info["tokenizer"] = self.tokenizer
+                log_probs_token_ids = data_item.batch["log_probs_token_ids"]
+                extra_info["log_probs_token_ids"] = log_probs_token_ids
 
             score = self.compute_score(
                 data_source=data_source,

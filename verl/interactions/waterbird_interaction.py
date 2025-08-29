@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
+
 class WaterbirdInteraction(BaseInteraction):
     """A demo interaction for calculating the reward of gsm8k.
 
@@ -87,22 +88,16 @@ class WaterbirdInteraction(BaseInteraction):
                 "multimodal_data": multi_modal_data
             }
 
-            response="""
-* Step 2 Format: A JSON object with a single key ```json{"classification": "Result"}```
+            response="""* Step 2 Format: <answer>Waterbird or Landbird</answer>
 
-Step 2: Excellent. Now, using the original image provided first and the cropped image of the bird (based on your previous bounding box) provided second, classify the bird as either a "Waterbird" or a "Landbird".
-
-Your answer must be in JSON format.
-
-Original Image: <image>
-Cropped Bird Image: <image>"""
+Step 2: Excellent. Now, using the original image <image> provided first and the cropped image <image> of the bird (based on your previous bounding box) provided second, classify the bird as either a "Waterbird" or a "Landbird". Provide your classification result in the format <answer>Waterbird or Landbird</answer>."""
             should_terminate_sequence=False
         else:
             response = "Your response don't match format"
             should_terminate_sequence = True
             additional_data={}
 
-        return should_terminate_sequence, response, reward, additional_data
+        return should_terminate_sequence, response, reward-1, additional_data
 
     async def calculate_score(self, instance_id: str, **kwargs) -> float:
         content=self._instance_dict[instance_id]["response"]
