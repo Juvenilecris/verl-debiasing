@@ -90,7 +90,7 @@ class WaterbirdInteraction(BaseInteraction):
 
             response="""* Step 2 Format: <answer>Waterbird or Landbird</answer>
 
-Step 2: Excellent. Now, using the original image <image> provided first and the cropped image <image> of the bird (based on your previous bounding box) provided second, classify the bird as either a "Waterbird" or a "Landbird". Provide your classification result in the format <answer>Waterbird or Landbird</answer>."""
+Step 2: Now, using the original image <image> provided first and the cropped image <image> of the bird (based on your previous bounding box) provided second, classify the bird as either a "Waterbird" or a "Landbird". Provide your classification result in the format <answer>Waterbird or Landbird</answer>."""
             should_terminate_sequence=False
         else:
             response = "Your response don't match format"

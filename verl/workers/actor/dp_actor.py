@@ -20,6 +20,8 @@ Single Process Actor
 import logging
 import os
 
+from transformers.models.informer.modeling_informer import weighted_average
+
 import torch
 from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
@@ -411,14 +413,13 @@ class DataParallelPPOActor(BasePPOActor):
                     advantages = model_inputs["advantages"]
              
                     group_weights=[[1,2.14],[7.49,3.40]]
-                    
                     if self.config.weight_by_group :
-                        print("len():",len(model_inputs["extra_info"]))
-                        # print("model_inputs_y:",model_inputs["extra_info"]["y"])
-                        # print("model_inputs_place:",model_inputs["extra_info"]["place"])
-                        # weights = group_weights[model_inputs["extra_info"]["y"]][model_inputs["extra_info"]["place"]]
-                        # weights = -weights if model_inputs["extra_info"]["is_negative"] else weights
-                        # print("weight:",weights)
+                        weights=[]
+                        print("len():",len())
+                        for dict in model_inputs["extra_info"]:
+                            weight = group_weights[dict["y"]][dict["place"]]
+                            weight = -weight if dict["is_negative"] else weight
+                            weights.append(weight)
                     
 
                     entropy_coeff = self.config.entropy_coeff
@@ -449,6 +450,7 @@ class DataParallelPPOActor(BasePPOActor):
                         response_mask=response_mask,
                         loss_agg_mode=loss_agg_mode,
                         config=self.config,
+                        weights=weights if self.config.weight_by_group else None
                     )
 
                     if entropy_coeff != 0:
@@ -476,9 +478,6 @@ class DataParallelPPOActor(BasePPOActor):
                         loss = policy_loss * loss_scale_factor
                     else:
                         loss = policy_loss * loss_scale_factor
-                    if self.config.weight_by_group:
-                        # loss = loss * weights
-                        print(loss)
                         
                     loss.backward()
 
